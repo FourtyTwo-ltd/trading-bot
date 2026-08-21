@@ -6,12 +6,28 @@ import threading
 from dotenv import load_dotenv
 from alpaca_connector import AlpacaConnector
 from strategies import SMAStrategy, RSIStrategy, BreakoutStrategy
-from datetime import datetime
+from datetime import datetime, time
+import pytz
 
 load_dotenv()
 
 app = Flask(__name__)
 db = TradeDatabase("trades.db")
+
+def is_market_open():
+    """Check if US stock market is currently open"""
+    et = pytz.timezone('US/Eastern')
+    now = datetime.now(et)
+
+    # Market is closed on weekends (5 = Saturday, 6 = Sunday)
+    if now.weekday() >= 5:
+        return False
+
+    # Market hours: 9:30 AM - 4:00 PM ET
+    market_open = time(9, 30)
+    market_close = time(16, 0)
+
+    return market_open <= now.time() < market_close
 
 # Global reference to trader
 trader = None
@@ -136,6 +152,28 @@ HTML_TEMPLATE = """
             border-radius: 20px;
             font-size: 14px;
             font-weight: 600;
+            margin-right: 12px;
+        }
+
+        .market-status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid;
+        }
+
+        .market-open {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: #00ff88;
+            color: #00ff88;
+        }
+
+        .market-closed {
+            background: rgba(255, 68, 68, 0.1);
+            border-color: #ff4444;
+            color: #ff4444;
         }
 
         .last-update {
@@ -317,7 +355,10 @@ HTML_TEMPLATE = """
                 <p>Real-time automated trading dashboard</p>
             </div>
             <div class="header-right">
-                <div class="asset-badge">📊 Trading: <span id="asset-symbol">SPY</span> (US Stocks)</div>
+                <div>
+                    <div class="asset-badge">📊 Trading: <span id="asset-symbol">SPY</span> (US Stocks)</div>
+                    <div class="market-status" id="market-status-badge">MARKET CLOSED</div>
+                </div>
                 <div class="last-update">Last updated: <span id="last-update">now</span></div>
                 <button class="button" onclick="location.reload()" style="margin-top: 12px;">Refresh</button>
             </div>
@@ -438,6 +479,15 @@ HTML_TEMPLATE = """
 
     <script>
         function loadData() {
+            // Load market status
+            fetch('/api/market-status')
+                .then(r => r.json())
+                .then(data => {
+                    const badge = document.getElementById('market-status-badge');
+                    badge.textContent = data.status;
+                    badge.className = 'market-status ' + (data.is_open ? 'market-open' : 'market-closed');
+                });
+
             // Load account stats
             fetch('/api/stats')
                 .then(r => r.json())
@@ -601,6 +651,14 @@ def get_positions():
 def get_trades():
     trades = db.get_all_trades()
     return jsonify({'trades': trades})
+
+@app.route('/api/market-status')
+def get_market_status():
+    open_status = is_market_open()
+    return jsonify({
+        'is_open': open_status,
+        'status': 'MARKET OPEN' if open_status else 'MARKET CLOSED'
+    })
 
 def start_trader():
     try:
