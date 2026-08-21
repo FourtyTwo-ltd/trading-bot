@@ -1,9 +1,28 @@
 from flask import Flask, jsonify, render_template_string
 from database import TradeDatabase
 import pandas as pd
+import os
+import threading
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 db = TradeDatabase("trades.db")
+
+# Start the live trader in background
+def start_trader():
+    try:
+        from live_trader import LiveTrader
+        symbol = os.getenv("SYMBOL", "SPY")
+        api_key = os.getenv("APCA_API_KEY_ID")
+        secret_key = os.getenv("APCA_API_SECRET_KEY")
+
+        if api_key and secret_key:
+            trader = LiveTrader(symbol, api_key, secret_key)
+            trader.start()
+    except Exception as e:
+        print(f"Error starting trader: {e}")
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -134,5 +153,11 @@ def get_trades():
     return jsonify(trades)
 
 if __name__ == '__main__':
-    print("Starting dashboard on http://localhost:5000")
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    # Start trader in background thread
+    trader_thread = threading.Thread(target=start_trader, daemon=True)
+    trader_thread.start()
+
+    # Get port from environment variable (Render sets PORT env var)
+    port = int(os.getenv("PORT", 5000))
+    print(f"Starting dashboard on port {port}...")
+    app.run(debug=False, host='0.0.0.0', port=port)
