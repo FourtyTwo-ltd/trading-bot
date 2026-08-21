@@ -8,6 +8,7 @@ from alpaca_connector import AlpacaConnector
 from strategies import SMAStrategy, RSIStrategy, BreakoutStrategy
 from datetime import datetime, time
 import pytz
+import json
 
 load_dotenv()
 
@@ -19,17 +20,14 @@ def is_market_open():
     et = pytz.timezone('US/Eastern')
     now = datetime.now(et)
 
-    # Market is closed on weekends (5 = Saturday, 6 = Sunday)
     if now.weekday() >= 5:
         return False
 
-    # Market hours: 9:30 AM - 4:00 PM ET
     market_open = time(9, 30)
     market_close = time(16, 0)
 
     return market_open <= now.time() < market_close
 
-# Global reference to trader
 trader = None
 
 def set_trader(live_trader):
@@ -55,12 +53,10 @@ def get_current_signals():
         current_price = data['close'].iloc[-1]
         signals_info = {}
 
-        # SMA Strategy
         sma_50 = data['close'].rolling(50).mean().iloc[-1]
         sma_200 = data['close'].rolling(200).mean().iloc[-1]
         sma_status = "BULLISH" if sma_50 > sma_200 else "BEARISH"
 
-        # RSI Strategy
         delta = data['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -69,7 +65,6 @@ def get_current_signals():
         current_rsi = rsi.iloc[-1]
         rsi_status = "OVERSOLD" if current_rsi < 30 else "OVERBOUGHT" if current_rsi > 70 else "NEUTRAL"
 
-        # Breakout Strategy
         high_20 = data['high'].rolling(20).max().iloc[-1]
         low_20 = data['low'].rolling(20).min().iloc[-1]
         breakout_status = "ABOVE HIGH" if current_price > high_20 else "BELOW LOW" if current_price < low_20 else "NEUTRAL"
@@ -90,11 +85,41 @@ def get_current_signals():
     except:
         return {}
 
+def get_chart_data():
+    """Get price data for chart"""
+    try:
+        api_key = os.getenv("APCA_API_KEY_ID")
+        secret_key = os.getenv("APCA_API_SECRET_KEY")
+        symbol = os.getenv("SYMBOL", "SPY")
+
+        alpaca = AlpacaConnector(api_key, secret_key)
+        data = alpaca.get_historical_data(symbol, days=60)
+
+        if data is None or len(data) == 0:
+            return []
+
+        chart_data = []
+        for idx, row in data.iterrows():
+            timestamp = int(idx.timestamp())
+            chart_data.append({
+                'time': timestamp,
+                'open': float(row['open']),
+                'high': float(row['high']),
+                'low': float(row['low']),
+                'close': float(row['close']),
+                'volume': float(row['volume'])
+            })
+
+        return chart_data
+    except:
+        return []
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Trading Bot Dashboard</title>
+    <title>KJO Personal Portfolio</title>
+    <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         * {
             margin: 0;
@@ -104,7 +129,7 @@ HTML_TEMPLATE = """
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #0a0e27 0%, #16213e 100%);
+            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
             color: #e0e0e0;
             min-height: 100vh;
             padding: 20px;
@@ -127,7 +152,7 @@ HTML_TEMPLATE = """
         .header-left h1 {
             font-size: 32px;
             font-weight: 700;
-            background: linear-gradient(135deg, #00d4ff, #0099ff);
+            background: linear-gradient(135deg, #a78bfa, #c084fc);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -145,9 +170,9 @@ HTML_TEMPLATE = """
 
         .asset-badge {
             display: inline-block;
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid #00d4ff;
-            color: #00d4ff;
+            background: rgba(167, 139, 250, 0.1);
+            border: 1px solid #a78bfa;
+            color: #a78bfa;
             padding: 8px 16px;
             border-radius: 20px;
             font-size: 14px;
@@ -165,15 +190,15 @@ HTML_TEMPLATE = """
         }
 
         .market-open {
-            background: rgba(0, 255, 136, 0.1);
-            border-color: #00ff88;
-            color: #00ff88;
+            background: rgba(34, 197, 94, 0.1);
+            border-color: #22c55e;
+            color: #22c55e;
         }
 
         .market-closed {
-            background: rgba(255, 68, 68, 0.1);
-            border-color: #ff4444;
-            color: #ff4444;
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+            color: #ef4444;
         }
 
         .last-update {
@@ -199,8 +224,8 @@ HTML_TEMPLATE = """
         }
 
         .card:hover {
-            border-color: rgba(0, 212, 255, 0.3);
-            box-shadow: 0 8px 32px rgba(0, 212, 255, 0.1);
+            border-color: rgba(167, 139, 250, 0.3);
+            box-shadow: 0 8px 32px rgba(167, 139, 250, 0.1);
         }
 
         .stat-label {
@@ -225,11 +250,11 @@ HTML_TEMPLATE = """
         }
 
         .positive {
-            color: #00ff88;
+            color: #22c55e;
         }
 
         .negative {
-            color: #ff4444;
+            color: #ef4444;
         }
 
         .signal-badge {
@@ -244,28 +269,28 @@ HTML_TEMPLATE = """
         }
 
         .signal-bullish {
-            background: rgba(0, 255, 136, 0.2);
-            color: #00ff88;
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
         }
 
         .signal-bearish {
-            background: rgba(255, 68, 68, 0.2);
-            color: #ff4444;
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
         }
 
         .signal-neutral {
-            background: rgba(255, 165, 0, 0.2);
-            color: #ffa500;
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
         }
 
         .signal-oversold {
-            background: rgba(0, 255, 136, 0.2);
-            color: #00ff88;
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
         }
 
         .signal-overbought {
-            background: rgba(255, 68, 68, 0.2);
-            color: #ff4444;
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
         }
 
         .wide-grid {
@@ -280,8 +305,14 @@ HTML_TEMPLATE = """
             font-weight: 700;
             margin-bottom: 20px;
             padding-bottom: 12px;
-            border-bottom: 2px solid rgba(0, 212, 255, 0.3);
-            color: #00d4ff;
+            border-bottom: 2px solid rgba(167, 139, 250, 0.3);
+            color: #a78bfa;
+        }
+
+        #chart {
+            width: 100%;
+            height: 400px;
+            margin-bottom: 20px;
         }
 
         table {
@@ -291,12 +322,12 @@ HTML_TEMPLATE = """
         }
 
         th {
-            background: rgba(0, 212, 255, 0.05);
+            background: rgba(167, 139, 250, 0.05);
             padding: 12px;
             text-align: left;
             font-size: 12px;
             font-weight: 600;
-            color: #00d4ff;
+            color: #a78bfa;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -309,11 +340,11 @@ HTML_TEMPLATE = """
         }
 
         tr:hover {
-            background: rgba(0, 212, 255, 0.05);
+            background: rgba(167, 139, 250, 0.05);
         }
 
         .button {
-            background: linear-gradient(135deg, #00d4ff, #0099ff);
+            background: linear-gradient(135deg, #a78bfa, #c084fc);
             color: #000;
             padding: 10px 20px;
             border: none;
@@ -328,12 +359,12 @@ HTML_TEMPLATE = """
 
         .button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+            box-shadow: 0 8px 24px rgba(167, 139, 250, 0.3);
         }
 
         .position-item {
-            background: rgba(0, 212, 255, 0.05);
-            border: 1px solid rgba(0, 212, 255, 0.2);
+            background: rgba(167, 139, 250, 0.05);
+            border: 1px solid rgba(167, 139, 250, 0.2);
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 12px;
@@ -344,6 +375,15 @@ HTML_TEMPLATE = """
             padding: 40px;
             color: #888;
         }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            margin-bottom: 30px;
+        }
     </style>
 </head>
 <body>
@@ -351,8 +391,8 @@ HTML_TEMPLATE = """
         <!-- Header -->
         <div class="header">
             <div class="header-left">
-                <h1>Trading Bot</h1>
-                <p>Real-time automated trading dashboard</p>
+                <h1>KJO Personal Portfolio</h1>
+                <p>Interface fully built and personalized by Kene Okonjo</p>
             </div>
             <div class="header-right">
                 <div>
@@ -388,6 +428,12 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
+        <!-- Price Chart -->
+        <div class="chart-container">
+            <h2 class="section-title">Live Price Chart</h2>
+            <div id="chart"></div>
+        </div>
+
         <!-- Current Price & Signals -->
         <div class="wide-grid">
             <div class="card">
@@ -400,11 +446,11 @@ HTML_TEMPLATE = """
                 <div style="margin: 12px 0;">
                     <div style="margin-bottom: 12px;">
                         <div class="stat-label">Open Positions</div>
-                        <div class="stat-value" style="font-size: 24px; color: #00d4ff;" id="open-positions">0</div>
+                        <div class="stat-value" style="font-size: 24px; color: #a78bfa;" id="open-positions">0</div>
                     </div>
                     <div>
                         <div class="stat-label">Total Trades</div>
-                        <div class="stat-value" style="font-size: 24px; color: #00d4ff;" id="total-trades">0</div>
+                        <div class="stat-value" style="font-size: 24px; color: #a78bfa;" id="total-trades">0</div>
                     </div>
                 </div>
             </div>
@@ -478,8 +524,57 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
+        let chart;
+        let candlestickSeries;
+
+        function formatNumber(num) {
+            return new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(num);
+        }
+
+        function initChart() {
+            const chartContainer = document.getElementById('chart');
+            chart = LightweightCharts.createChart(chartContainer, {
+                layout: {
+                    textColor: '#d1d5db',
+                    background: { type: 'solid', color: 'transparent' },
+                },
+                timeScale: {
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+                grid: {
+                    vertLines: { color: '#2d2d44' },
+                    hLines: { color: '#2d2d44' },
+                },
+            });
+
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#22c55e',
+                downColor: '#ef4444',
+                borderUpColor: '#22c55e',
+                borderDownColor: '#ef4444',
+                wickUpColor: '#22c55e',
+                wickDownColor: '#ef4444',
+            });
+
+            chart.timeScale().fitContent();
+        }
+
+        function updateChart() {
+            fetch('/api/chart-data')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.chart_data && data.chart_data.length > 0) {
+                        candlestickSeries.setData(data.chart_data);
+                        chart.timeScale().fitContent();
+                    }
+                });
+        }
+
         function loadData() {
-            // Load market status
             fetch('/api/market-status')
                 .then(r => r.json())
                 .then(data => {
@@ -488,13 +583,12 @@ HTML_TEMPLATE = """
                     badge.className = 'market-status ' + (data.is_open ? 'market-open' : 'market-closed');
                 });
 
-            // Load account stats
             fetch('/api/stats')
                 .then(r => r.json())
                 .then(data => {
-                    document.getElementById('equity').textContent = '$' + data.equity.toFixed(2);
-                    document.getElementById('cash').textContent = '$' + data.cash.toFixed(2);
-                    document.getElementById('total-pnl').textContent = '$' + data.total_pnl.toFixed(2);
+                    document.getElementById('equity').textContent = '$' + formatNumber(data.equity);
+                    document.getElementById('cash').textContent = '$' + formatNumber(data.cash);
+                    document.getElementById('total-pnl').textContent = '$' + formatNumber(data.total_pnl);
                     document.getElementById('total-trades').textContent = data.total_trades;
 
                     if (data.total_trades > 0) {
@@ -503,36 +597,31 @@ HTML_TEMPLATE = """
                     }
                 });
 
-            // Load signals
             fetch('/api/signals')
                 .then(r => r.json())
                 .then(data => {
                     if (data.current_price) {
-                        document.getElementById('current-price').textContent = '$' + data.current_price.toFixed(2);
+                        document.getElementById('current-price').textContent = '$' + formatNumber(data.current_price);
 
-                        // SMA
-                        document.getElementById('sma-50').textContent = '$' + data.sma_50.toFixed(2);
-                        document.getElementById('sma-200').textContent = '$' + data.sma_200.toFixed(2);
+                        document.getElementById('sma-50').textContent = '$' + formatNumber(data.sma_50);
+                        document.getElementById('sma-200').textContent = '$' + formatNumber(data.sma_200);
                         const smaBadge = document.getElementById('sma-status-badge');
                         smaBadge.textContent = data.sma_status;
                         smaBadge.className = 'signal-badge signal-' + data.sma_status.toLowerCase();
 
-                        // RSI
                         document.getElementById('rsi-value').textContent = data.rsi.toFixed(1);
                         const rsiBadge = document.getElementById('rsi-status-badge');
                         rsiBadge.textContent = data.rsi_status;
                         rsiBadge.className = 'signal-badge signal-' + data.rsi_status.toLowerCase();
 
-                        // Breakout
-                        document.getElementById('high-20').textContent = '$' + data.high_20.toFixed(2);
-                        document.getElementById('low-20').textContent = '$' + data.low_20.toFixed(2);
+                        document.getElementById('high-20').textContent = '$' + formatNumber(data.high_20);
+                        document.getElementById('low-20').textContent = '$' + formatNumber(data.low_20);
                         const breakoutBadge = document.getElementById('breakout-status-badge');
                         breakoutBadge.textContent = data.breakout_status;
                         breakoutBadge.className = 'signal-badge signal-' + (data.breakout_status.includes('ABOVE') ? 'bullish' : data.breakout_status.includes('BELOW') ? 'bearish' : 'neutral');
                     }
                 });
 
-            // Load positions
             fetch('/api/positions')
                 .then(r => r.json())
                 .then(data => {
@@ -548,13 +637,13 @@ HTML_TEMPLATE = """
                                     </div>
                                     <div style="text-align: right;">
                                         <div class="stat-label">Unrealized P&L</div>
-                                        <div class="stat-value" style="font-size: 18px;" class="${pos.pnl >= 0 ? 'positive' : 'negative'}">$${pos.pnl.toFixed(2)}</div>
+                                        <div class="stat-value" style="font-size: 18px;" class="${pos.pnl >= 0 ? 'positive' : 'negative'}">$${formatNumber(pos.pnl)}</div>
                                     </div>
                                 </div>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 12px;">
-                                    <div><span style="color: #888;">Entry:</span> $${pos.entry_price.toFixed(2)}</div>
-                                    <div><span style="color: #888;">Current:</span> $${pos.current_price.toFixed(2)}</div>
-                                    <div><span style="color: #888;">Stop Loss:</span> $${pos.stop_loss.toFixed(2)}</div>
+                                    <div><span style="color: #888;">Entry:</span> $${formatNumber(pos.entry_price)}</div>
+                                    <div><span style="color: #888;">Current:</span> $${formatNumber(pos.current_price)}</div>
+                                    <div><span style="color: #888;">Stop Loss:</span> $${formatNumber(pos.stop_loss)}</div>
                                     <div><span style="color: #888;">Qty:</span> ${pos.quantity}</div>
                                 </div>
                             </div>
@@ -565,7 +654,6 @@ HTML_TEMPLATE = """
                     }
                 });
 
-            // Load trades
             fetch('/api/trades')
                 .then(r => r.json())
                 .then(data => {
@@ -576,10 +664,10 @@ HTML_TEMPLATE = """
                             const row = `<tr>
                                 <td>${new Date(trade[1]).toLocaleDateString()}</td>
                                 <td>${trade[2]}</td>
-                                <td>$${trade[5].toFixed(2)}</td>
-                                <td>$${trade[7].toFixed(2)}</td>
+                                <td>$${formatNumber(trade[5])}</td>
+                                <td>$${formatNumber(trade[7])}</td>
                                 <td>${trade[8]}</td>
-                                <td class="${trade[9] > 0 ? 'positive' : 'negative'}">$${trade[9].toFixed(2)}</td>
+                                <td class="${trade[9] > 0 ? 'positive' : 'negative'}">$${formatNumber(trade[9])}</td>
                                 <td class="${trade[10] > 0 ? 'positive' : 'negative'}">${trade[10].toFixed(2)}%</td>
                             </tr>`;
                             tbody.innerHTML += row;
@@ -588,8 +676,10 @@ HTML_TEMPLATE = """
                 });
 
             document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            updateChart();
         }
 
+        initChart();
         loadData();
         setInterval(loadData, 10000);
     </script>
@@ -660,6 +750,10 @@ def get_market_status():
         'status': 'MARKET OPEN' if open_status else 'MARKET CLOSED'
     })
 
+@app.route('/api/chart-data')
+def get_chart_data_endpoint():
+    return jsonify({'chart_data': get_chart_data()})
+
 def start_trader():
     try:
         from live_trader import LiveTrader
@@ -676,11 +770,9 @@ def start_trader():
         print(f"Error starting trader: {e}")
 
 if __name__ == '__main__':
-    # Start trader in background thread
     trader_thread = threading.Thread(target=start_trader, daemon=True)
     trader_thread.start()
 
-    # Get port from environment variable (Render sets PORT env var)
     port = int(os.getenv("PORT", 5000))
     print(f"Starting dashboard on port {port}...")
     app.run(debug=False, host='0.0.0.0', port=port)
