@@ -207,6 +207,18 @@ HTML_TEMPLATE = """
             margin-top: 10px;
         }
 
+        .countdown {
+            background: rgba(167, 139, 250, 0.1);
+            border: 1px solid rgba(167, 139, 250, 0.3);
+            color: #a78bfa;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 10px;
+            text-align: center;
+        }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -393,6 +405,7 @@ HTML_TEMPLATE = """
             <div class="header-left">
                 <h1>KJO Personal Portfolio</h1>
                 <p>Interface fully built and personalized by Kene Okonjo</p>
+                <div class="countdown" id="countdown">Market opens in 5h 30m</div>
             </div>
             <div class="header-right">
                 <div>
@@ -532,6 +545,45 @@ HTML_TEMPLATE = """
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
             }).format(num);
+        }
+
+        function updateCountdown() {
+            const et = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+            const etTime = new Date(et);
+            const day = etTime.getDay();
+            const hours = etTime.getHours();
+            const minutes = etTime.getMinutes();
+
+            let nextOpen;
+
+            if (day === 0 || day === 6) {
+                // Weekend - open on Monday 9:30 AM ET
+                const daysUntilMonday = day === 0 ? 1 : 2;
+                nextOpen = new Date(etTime);
+                nextOpen.setDate(nextOpen.getDate() + daysUntilMonday);
+                nextOpen.setHours(9, 30, 0, 0);
+            } else if (hours >= 16 || (hours === 9 && minutes < 30)) {
+                // After 4 PM or before 9:30 AM - open tomorrow 9:30 AM ET
+                nextOpen = new Date(etTime);
+                if (hours >= 16) {
+                    nextOpen.setDate(nextOpen.getDate() + 1);
+                }
+                nextOpen.setHours(9, 30, 0, 0);
+            } else if (hours >= 9 && minutes >= 30 && hours < 16) {
+                // Market is open
+                document.getElementById('countdown').textContent = 'Market is open';
+                return;
+            }
+
+            const diff = nextOpen - etTime;
+            const diffHours = Math.floor(diff / (1000 * 60 * 60));
+            const diffMinutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+            if (diffHours > 0) {
+                document.getElementById('countdown').textContent = `Market opens in ${diffHours}h ${diffMinutes}m`;
+            } else {
+                document.getElementById('countdown').textContent = `Market opens in ${diffMinutes}m`;
+            }
         }
 
         function initChart() {
@@ -680,8 +732,10 @@ HTML_TEMPLATE = """
         }
 
         initChart();
+        updateCountdown();
         loadData();
         setInterval(loadData, 10000);
+        setInterval(updateCountdown, 60000);  // Update countdown every minute
     </script>
 </body>
 </html>
