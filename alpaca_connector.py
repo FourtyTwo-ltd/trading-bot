@@ -22,19 +22,19 @@ class AlpacaConnector:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)
 
-            bars = self.api.get_barset(symbol, 'day', limit=days)
-            if symbol not in bars:
+            bars = self.api.get_bars(symbol, 'day', start=start_date.isoformat(), end=end_date.isoformat())
+            if not bars or len(bars) == 0:
                 return None
 
             df_data = []
-            for bar in bars[symbol]:
+            for bar in bars:
                 df_data.append({
-                    'date': pd.to_datetime(bar.t),
-                    'open': bar.o,
-                    'high': bar.h,
-                    'low': bar.l,
-                    'close': bar.c,
-                    'volume': bar.v
+                    'date': pd.to_datetime(bar.t) if hasattr(bar, 't') else pd.to_datetime(bar.timestamp),
+                    'open': float(bar.o) if hasattr(bar, 'o') else float(bar.open),
+                    'high': float(bar.h) if hasattr(bar, 'h') else float(bar.high),
+                    'low': float(bar.l) if hasattr(bar, 'l') else float(bar.low),
+                    'close': float(bar.c) if hasattr(bar, 'c') else float(bar.close),
+                    'volume': float(bar.v) if hasattr(bar, 'v') else float(bar.volume)
                 })
 
             df = pd.DataFrame(df_data)
@@ -43,6 +43,8 @@ class AlpacaConnector:
 
         except Exception as e:
             print(f"Error fetching data: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def get_account_info(self):

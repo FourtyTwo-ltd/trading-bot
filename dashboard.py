@@ -817,11 +817,17 @@ def start_trader():
         secret_key = os.getenv("APCA_API_SECRET_KEY")
 
         if api_key and secret_key:
+            print(f"[Dashboard] Initializing LiveTrader for {symbol}...")
             trader = LiveTrader(symbol, api_key, secret_key)
             set_trader(trader)
+            print(f"[Dashboard] LiveTrader initialized, starting...")
             trader.start()
+        else:
+            print("ERROR: Alpaca API credentials not found in environment variables")
     except Exception as e:
-        print(f"Error starting trader: {e}")
+        print(f"CRITICAL ERROR starting trader: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     trader_thread = threading.Thread(target=start_trader, daemon=True)

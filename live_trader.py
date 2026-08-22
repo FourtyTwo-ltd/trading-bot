@@ -1,7 +1,8 @@
 import time
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, time as datetime_time
 import schedule
+import pytz
 from alpaca_connector import AlpacaConnector
 from strategies import SMAStrategy, RSIStrategy, BreakoutStrategy
 from database import TradeDatabase
@@ -20,9 +21,22 @@ class LiveTrader:
         self.daily_pnl = 0
         self.max_daily_loss = 15  # 3% of $500
 
+    def is_market_open(self):
+        """Check if US stock market is currently open"""
+        et = pytz.timezone('US/Eastern')
+        now = datetime.now(et)
+
+        if now.weekday() >= 5:
+            return False
+
+        market_open = datetime_time(9, 30)
+        market_close = datetime_time(16, 0)
+
+        return market_open <= now.time() < market_close
+
     def fetch_latest_data(self, lookback_days=200):
         """Fetch latest market data"""
-        data = self.alpaca.get_historical_data(self.symbol, days=lookback_days, timeframe="1Day")
+        data = self.alpaca.get_historical_data(self.symbol, days=lookback_days)
         return data
 
     def evaluate_strategies(self, data):
@@ -131,6 +145,10 @@ class LiveTrader:
     def run_once(self):
         """Execute one evaluation cycle"""
         try:
+            if not self.is_market_open():
+                print(f"[{datetime.now()}] Market is closed, skipping evaluation")
+                return
+
             print(f"\n[{datetime.now()}] Evaluating strategies...")
             data = self.fetch_latest_data()
 
@@ -153,18 +171,26 @@ class LiveTrader:
 
         except Exception as e:
             print(f"Error in run_once: {e}")
+            import traceback
+            traceback.print_exc()
 
     def start(self):
         """Start the live trading bot"""
-        print(f"Starting live trader for {self.symbol}...")
-        self.print_account_status()
-
-        # Schedule to run every hour during market hours
-        schedule.every().hour.at(":00").do(self.run_once)
-
         try:
+            print(f"\n[{datetime.now()}] Starting live trader for {self.symbol}...")
+            print(f"Connecting to Alpaca API...")
+            self.print_account_status()
+            print(f"Trader initialized successfully. Scheduling trades every hour during market hours (9:30 AM - 4:00 PM ET)")
+
+            # Schedule to run every hour at :00 seconds during market hours
+            schedule.every().hour.at(":00").do(self.run_once)
+
             while True:
                 schedule.run_pending()
                 time.sleep(60)
         except KeyboardInterrupt:
             print("\nShutting down trader...")
+        except Exception as e:
+            print(f"CRITICAL ERROR in trader startup: {e}")
+            import traceback
+            traceback.print_exc()
